@@ -9,7 +9,7 @@ from data_loader import Dataset
 from tqdm import tqdm
 
 USE_CUDA = True if torch.cuda.is_available() else False
-BATCH_SIZE = 100
+BATCH_SIZE = 80
 N_EPOCHS = 30
 LEARNING_RATE = 0.01
 MOMENTUM = 0.9
@@ -92,6 +92,10 @@ def train(model, optimizer, train_loader, epoch):
         correct = sum(np.argmax(masked.data.cpu().numpy(), 1) == np.argmax(target.data.cpu().numpy(), 1))
         train_loss = loss.item()
         total_loss += train_loss
+        if (epoch + 1) % 1 == 0:
+            # Save the model checkpoint
+            torch.save(model.state_dict(), 'CapsNet.ckpt')
+
         if batch_id % 100 == 0:
             tqdm.write("Epoch: [{}/{}], Batch: [{}/{}], train accuracy: {:.6f}, loss: {:.6f}".format(
                 epoch,
@@ -101,7 +105,7 @@ def train(model, optimizer, train_loader, epoch):
                 correct / float(BATCH_SIZE),
                 train_loss / float(BATCH_SIZE)
                 ))
-    tqdm.write('Epoch: [{}/{}], train loss: {:.6f}'.format(epoch,N_EPOCHS,total_loss / len(train_loader.dataset)))
+    tqdm.write('Epoch: [{}/{}], train loss: {:.6f}'.format(epoch, N_EPOCHS,total_loss / len(train_loader.dataset)))
 
 
 def test(capsule_net, test_loader, epoch):
@@ -130,8 +134,8 @@ def test(capsule_net, test_loader, epoch):
 
 if __name__ == '__main__':
     torch.manual_seed(1)
-    dataset = 'cifar10'
-    # dataset = 'mnist'
+    # dataset = 'cifar10'
+    dataset = 'mnist'
     config = Config(dataset)
     mnist = Dataset(dataset, BATCH_SIZE)
 

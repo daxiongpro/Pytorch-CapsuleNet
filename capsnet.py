@@ -21,7 +21,18 @@ class ConvLayer(nn.Module):
 
 
 class PrimaryCaps(nn.Module):
+    """
+    这里输入的是256*20*20的特征图
+    先用8个Conv2d(256,32)得到8个32*H*W的特征图，再把这8个每个对应位置组合起来
+    """
     def __init__(self, num_capsules=8, in_channels=256, out_channels=32, kernel_size=9, num_routes=32 * 6 * 6):
+        """
+        :param num_capsules: 每个胶囊的维度
+        :param in_channels: 输入特征图的通道数
+        :param out_channels: 输出通道数
+        :param kernel_size: 卷积核大小
+        :param num_routes: 总共有多少个胶囊
+        """
         super(PrimaryCaps, self).__init__()
         self.num_routes = num_routes
         self.capsules = nn.ModuleList([
@@ -29,12 +40,29 @@ class PrimaryCaps(nn.Module):
             for _ in range(num_capsules)])
 
     def forward(self, x):
+        """
+        :param x: (B,C,H,W) -> (100,256,20,20)
+        :return: (B,N,n_c) -> (100,2048,8)
+            N:胶囊个数
+            n_c：每个胶囊的维度
+        """
         u = [capsule(x) for capsule in self.capsules]
+        # stack:把多个（放在一个列表中）n维tensor合并，整体变成n+1维。在dim为1（第一维）上进行增加。dim可以为0
         u = torch.stack(u, dim=1)
         u = u.view(x.size(0), self.num_routes, -1)
-        return self.squash(u)
+        return u
+        # return self.squash(u)
 
     def squash(self, input_tensor):
+        '''
+        :param input_tensor: (B,n_c,C,H,W) -> (100,8,32,6,6)
+            B:batch_size
+            n_c:每个胶囊的长度
+            C:胶囊图的通道数
+            H:图片的高
+            W：图片的宽
+        :return: output_tensor：经过squash激活的胶囊(B,n_c,C,H,W) -> (100,8,32,6,6)
+        '''
         squared_norm = (input_tensor ** 2).sum(-1, keepdim=True)
         output_tensor = squared_norm * input_tensor / ((1. + squared_norm) * torch.sqrt(squared_norm))
         return output_tensor
@@ -51,7 +79,13 @@ class DigitCaps(nn.Module):
         self.W = nn.Parameter(torch.randn(1, num_routes, num_capsules, out_channels, in_channels))
 
     def forward(self, x):
+        '''
+        :param x: torch.Size([80, 2048, 8])
+        :return:
+        '''
+
         batch_size = x.size(0)
+        # unsqueeze(2)：在第4个维度上增加一个括号，即若原来是(2,3,3,5),将变成(2,3,1,3,5)
         x = torch.stack([x] * self.num_capsules, dim=2).unsqueeze(4)
 
         W = torch.cat([self.W] * batch_size, dim=0)
