@@ -50,8 +50,8 @@ class PrimaryCaps(nn.Module):
         # stack:把多个（放在一个列表中）n维tensor合并，整体变成n+1维。在dim为1（第一维）上进行增加。dim可以为0
         u = torch.stack(u, dim=1)
         u = u.view(x.size(0), self.num_routes, -1)
-        return u
-        # return self.squash(u)
+        # return u
+        return self.squash(u)
 
     def squash(self, input_tensor):
         '''
@@ -64,7 +64,7 @@ class PrimaryCaps(nn.Module):
         :return: output_tensor：经过squash激活的胶囊(B,n_c,C,H,W) -> (100,8,32,6,6)
         '''
         squared_norm = (input_tensor ** 2).sum(-1, keepdim=True)
-        output_tensor = squared_norm * input_tensor / ((1. + squared_norm) * torch.sqrt(squared_norm))
+        output_tensor = squared_norm * input_tensor / ((1. + squared_norm) * torch.sqrt(squared_norm + 1e-8))
         return output_tensor
 
 
@@ -80,17 +80,21 @@ class DigitCaps(nn.Module):
 
     def forward(self, x):
         '''
-        :param x: torch.Size([80, 2048, 8])
+        :param x: torch.Size([80, 1152, 8])
         :return:
         '''
 
         batch_size = x.size(0)
         # unsqueeze(2)：在第4个维度上增加一个括号，即若原来是(2,3,3,5),将变成(2,3,1,3,5)
-        x = torch.stack([x] * self.num_capsules, dim=2).unsqueeze(4)
-
+        x = torch.stack([x] * self.num_capsules, dim=2)
+        # x: torch.Size([80, 1152, 10, 8, 1])
+        x = x.unsqueeze(4)
+        # W：torch.Size([80, 1152, 10, 16, 8])
         W = torch.cat([self.W] * batch_size, dim=0)
-        u_hat = torch.matmul(W, x)
 
+        # u_hat:torch.Size([80, 1152, 10, 16, 1])
+        u_hat = torch.matmul(W, x)
+        # b_ij :[1, 1152, 10, 1]
         b_ij = Variable(torch.zeros(1, self.num_routes, self.num_capsules, 1))
         if USE_CUDA:
             b_ij = b_ij.cuda()
@@ -111,7 +115,7 @@ class DigitCaps(nn.Module):
 
     def squash(self, input_tensor):
         squared_norm = (input_tensor ** 2).sum(-1, keepdim=True)
-        output_tensor = squared_norm * input_tensor / ((1. + squared_norm) * torch.sqrt(squared_norm))
+        output_tensor = squared_norm * input_tensor / ((1. + squared_norm) * torch.sqrt(squared_norm + 1e-8))
         return output_tensor
 
 
@@ -131,7 +135,7 @@ class Decoder(nn.Module):
         )
 
     def forward(self, x, data):
-        classes = torch.sqrt((x ** 2).sum(2))
+        classes = torch.sqrt((x ** 2).sum(2) + 1e-8)
         classes = F.softmax(classes, dim=0)
 
         _, max_length_indices = classes.max(dim=1)
@@ -174,7 +178,7 @@ class CapsNet(nn.Module):
     def margin_loss(self, x, labels, size_average=True):
         batch_size = x.size(0)
 
-        v_c = torch.sqrt((x ** 2).sum(dim=2, keepdim=True))
+        v_c = torch.sqrt((x ** 2).sum(dim=2, keepdim=True) + 1e-8)
 
         left = F.relu(0.9 - v_c).view(batch_size, -1)
         right = F.relu(v_c - 0.1).view(batch_size, -1)
